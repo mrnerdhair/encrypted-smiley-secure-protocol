@@ -10,7 +10,7 @@ const serialPortConfig = {
 
 const eSSP = new SspLib({
   id: 0x00,
-  debug: true, // default: false
+  debug: false, // default: false
   timeout: 3000, // default: 3000
   encryptAllCommand: true, // default: true
   fixedKey: '0123456701234567', // default: '0123456701234567'
@@ -25,8 +25,8 @@ eSSP.on('CLOSE', () => {
 })
 
 eSSP.on('READ_NOTE', result => {
-  console.log('READ_NOTE', result)
-  console.log(channels[result.channel])
+  if (result.channel === 0) return
+  console.log('READ_NOTE', result, channels[result.channel])
 
   if (channels[result.channel].value === 500) {
     eSSP.command('REJECT_BANKNOTE')
@@ -42,7 +42,7 @@ eSSP.on('NOTE_REJECTED', result => {
 })
 
 eSSP
-  .open('COM9', serialPortConfig)
+  .open('/dev/ttyUSB0', serialPortConfig)
   .then(() => eSSP.command('SYNC'))
   .then(() => eSSP.command('HOST_PROTOCOL_VERSION', { version: 6 }))
   .then(() => eSSP.initEncryption())
@@ -65,7 +65,18 @@ eSSP
     channels: Array(channels.length).fill(1),
   }))
   .then(() => eSSP.enable())
-  .then(() => {
+  .then(async () => {
+    console.log('resetting routes')
+    for (const i of [200, 5000, 10000]) {
+      await eSSP.command('SET_DENOMINATION_ROUTE', {route: 'cashbox', value: i, country_code: 'USD'})
+    }
+    for (const i of [100, 500, 1000, 2000]) {
+      await eSSP.command('SET_DENOMINATION_ROUTE', {route: 'payout', value: i, country_code: 'USD'})
+    }
+    console.log('get levels')
+    console.log((await eSSP.command('GET_ALL_LEVELS'))?.info?.counter)
+    console.log('check barcode reader config')
+    console.log(await eSSP.command('GET_BAR_CODE_READER_CONFIGURATION'))
     console.log('GO!!!')
   })
   .catch(error => {
