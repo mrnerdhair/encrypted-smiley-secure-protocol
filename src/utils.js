@@ -33,9 +33,18 @@ function randHexArray(length = 0) {
   return array
 }
 
-function int64LE(number) {
+function expmod(n, p, m) {
+  if (p == 0n) return 1n;
+  const nm = n % m;
+  let r = expmod(nm, p / 2n, m);
+  r = (r * r) % m;
+  if (p % 2n == 0n) return r;
+  return (r * nm) % m;
+}
+
+function uint64LE(number) {
   const buffer = Buffer.alloc(8)
-  buffer.writeBigInt64LE(BigInt(number))
+  buffer.writeBigUint64LE(BigInt(number))
   return buffer
 }
 
@@ -198,7 +207,7 @@ function argsToByte(command, args, protocolVersion) {
       byte += args.NO_HOLD_NOTE_ON_PAYOUT || args.OPTIMISE_FOR_PAYIN_SPEED ? 2 : 0
       return [byte]
     } else if (command === 'SET_FIXED_ENCRYPTION_KEY') {
-      return int64LE(args.fixedKey)
+      return uint64LE(args.fixedKey)
     } else if (command === 'COIN_MECH_OPTIONS') {
       return [args.ccTalk ? 1 : 0]
     }
@@ -629,5 +638,6 @@ module.exports = {
   CRC16,
   randHexArray,
   argsToByte,
-  int64LE,
+  uint64LE,
+  expmod,
 }

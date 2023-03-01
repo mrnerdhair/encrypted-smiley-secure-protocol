@@ -66,21 +66,22 @@ eSSP
   }))
   .then(() => eSSP.enable())
   .then(async () => {
-    console.log('resetting routes')
-    for (const i of [200, 5000, 10000]) {
-      await eSSP.command('SET_DENOMINATION_ROUTE', {route: 'cashbox', value: i, country_code: 'USD'})
-    }
-    for (const i of [100, 500, 1000, 2000]) {
-      await eSSP.command('SET_DENOMINATION_ROUTE', {route: 'payout', value: i, country_code: 'USD'})
-    }
-    console.log('getting routes')
-    for (const i of [100, 200, 500, 1000, 2000, 5000, 10000]) {
-      console.log(i, (await eSSP.command('GET_DENOMINATION_ROUTE', {value: i, country_code: 'USD'}))?.info)
-    }
     console.log('enable payout')
-    await eSSP.command('ENABLE_PAYOUT_DEVICE', {REQUIRE_FULL_STARTUP: true, GIVE_VALUE_ON_STORED: true})
+    console.log(await eSSP.command('ENABLE_PAYOUT_DEVICE', {REQUIRE_FULL_STARTUP: false, GIVE_VALUE_ON_STORED: true}))
     console.log('get levels')
-    console.log((await eSSP.command('GET_ALL_LEVELS'))?.info?.counter)
+    const levels = (await eSSP.command('GET_ALL_LEVELS'))?.info?.counter;
+    const levels2 = [];
+    for (let i = 1; i in levels; i++) {
+      levels2.push(levels[i])
+    }
+    console.log(levels, levels2)
+    const amount = levels2.map(x => x.value * x.denomination_level).reduce((a, x) => a + x, 0)
+    console.log('payout all', amount)
+    console.log(await eSSP.command('PAYOUT_AMOUNT', {
+      amount,
+      country_code: 'USD',
+      test: false,
+    }))
     console.log('GO!!!')
   })
   .catch(error => {

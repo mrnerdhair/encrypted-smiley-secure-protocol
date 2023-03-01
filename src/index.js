@@ -1,7 +1,7 @@
 const { SerialPort } = require('serialport')
 const EventEmitter = require('events')
 const crypto = require('crypto')
-const { parseData, CRC16, randHexArray, argsToByte, int64LE } = require('./utils')
+const { parseData, CRC16, randHexArray, argsToByte, uint64LE, expmod } = require('./utils')
 const commandList = require('./command')
 const chalk = require('chalk')
 const semver = require('semver')
@@ -109,26 +109,23 @@ module.exports = class SSP extends EventEmitter {
     return this.id | this.sequence
   }
 
-  initEncryption() {
-    return Promise.all([
-      BigInt(dh.createDiffieHellman(16).getPrime().readUint16LE()),
-      BigInt(dh.createDiffieHellman(16).getPrime().readUint16LE()),
-      BigInt(dh.createDiffieHellman(16).getPrime().readUint16LE()),
+  async initEncryption() {
+    const res = await Promise.all([
+      BigInt(`0x${dh.createDiffieHellman(64).getPrime("hex")}`),
+      BigInt(`0x${dh.createDiffieHellman(64).getPrime("hex")}`),
+      BigInt(`0x${dh.createDiffieHellman(64).getPrime("hex")}`),
     ])
-      .then(res => {
-        this.keys.generatorKey = res[0]
-        this.keys.modulusKey = res[1]
-        this.keys.hostRandom = res[2]
-        this.keys.hostIntKey = this.keys.generatorKey ** this.keys.hostRandom % this.keys.modulusKey
-        return
-      })
-      .then(() => this.exec('SET_GENERATOR', int64LE(this.keys.generatorKey)))
-      .then(() => this.exec('SET_MODULUS', int64LE(this.keys.modulusKey)))
-      .then(() => this.exec('REQUEST_KEY_EXCHANGE', int64LE(this.keys.hostIntKey)))
-      .then(() => {
-        this.count = 0
-        return
-      })
+
+    this.keys.generatorKey = res[0]
+    this.keys.modulusKey = res[1]
+    this.keys.hostRandom = res[2]
+    this.keys.hostIntKey = this.keys.generatorKey.mod
+    this.keys.hostIntKey = expmod(this.keys.generatorKey, this.keys.hostRandom, this.keys.modulusKey);
+
+    await this.exec('SET_GENERATOR', uint64LE(this.keys.generatorKey))
+    await this.exec('SET_MODULUS', uint64LE(this.keys.modulusKey))
+    await this.exec('REQUEST_KEY_EXCHANGE', uint64LE(this.keys.hostIntKey))
+    this.count = 0
   }
 
   getPacket(command, args) {
@@ -275,9 +272,9 @@ module.exports = class SSP extends EventEmitter {
 
   createHostEncryptionKeys(data) {
     if (this.keys.key === null) {
-      this.keys.slaveIntKey = Buffer.from(data).readBigInt64LE()
-      this.keys.key = this.keys.slaveIntKey ** this.keys.hostRandom % this.keys.modulusKey
-      this.encryptKey = Buffer.concat([int64LE(Buffer.from(this.keys.fixedKey, 'hex').readBigInt64BE()), int64LE(this.keys.key)])
+      this.keys.slaveIntKey = Buffer.from(data).readBigUint64LE()
+      this.keys.key = expmod(this.keys.slaveIntKey, this.keys.hostRandom, this.keys.modulusKey)
+      this.encryptKey = Buffer.concat([uint64LE(Buffer.from(this.keys.fixedKey, 'hex').readBigUint64BE()), uint64LE(this.keys.key)])
 
       this.count = 0
       if (this.debug) {
