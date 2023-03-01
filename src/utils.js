@@ -303,10 +303,10 @@ function parseData(data, currentCommand, protocolVersion, deviceUnitType) {
     } else if (currentCommand === 'GET_FIRMWARE_VERSION' || currentCommand === 'GET_DATASET_VERSION') {
       result.info.version = Buffer.from(data).toString()
     } else if (currentCommand === 'GET_ALL_LEVELS') {
-      result.info.counter = {}
+      result.info.counter = []
       for (let i = 0; i < data[0]; i++) {
         const tmp = data.slice(i * 9 + 1, i * 9 + 10)
-        result.info.counter[i + 1] = {
+        result.info.counter[i] = {
           denomination_level: Buffer.from(tmp.slice(0, 2)).readInt16LE(),
           value: Buffer.from(tmp.slice(2, 6)).readInt32LE(),
           country_code: Buffer.from(tmp.slice(6, 9)).toString(),
