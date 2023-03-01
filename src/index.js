@@ -7,6 +7,7 @@ const chalk = require('chalk')
 const semver = require('semver')
 const pkg = require('../package.json')
 const ESSPProtocolParser = require('./parser')
+const dh = require('diffie-hellman/browser')
 
 // Encrypt
 const encrypt = (key, message) => {
@@ -110,9 +111,9 @@ module.exports = class SSP extends EventEmitter {
 
   initEncryption() {
     return Promise.all([
-      BigInt(crypto.createDiffieHellman(16).getPrime().readUInt16BE()),
-      BigInt(crypto.createDiffieHellman(16).getPrime().readUInt16BE()),
-      BigInt(crypto.createDiffieHellman(16).getPrime().readUInt16BE()),
+      BigInt(dh.createDiffieHellman(16).getPrime().readInt16LE()),
+      BigInt(dh.createDiffieHellman(16).getPrime().readInt16LE()),
+      BigInt(dh.createDiffieHellman(16).getPrime().readInt16LE()),
     ])
       .then(res => {
         this.keys.generatorKey = res[0]
