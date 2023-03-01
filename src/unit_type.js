@@ -8,4 +8,5 @@ module.exports = {
   13: 'TEBS',
   14: 'TEBS with SMART Payout',
   15: 'TEBS with SMART Ticket',
+  18: 'NV4000',
 }

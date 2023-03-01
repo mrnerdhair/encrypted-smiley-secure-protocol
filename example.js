@@ -54,7 +54,7 @@ eSSP
   .then(() => eSSP.command('SETUP_REQUEST'))
   .then(result => {
     for (let i = 0; i < result.info.channel_value.length; i++) {
-      channels[result.info.channel_value[i]] = {
+      channels[i] = {
         value: result.info.expanded_channel_value[i],
         country_code: result.info.expanded_channel_country_code[i],
       }

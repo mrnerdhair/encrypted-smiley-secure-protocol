@@ -51,13 +51,34 @@ function int16LE(number) {
   return buffer
 }
 
+function translateRoute(x) {
+  switch (x) {
+  case 'payout':
+    return 0
+  case 'cashbox':
+    return 1
+  case 'recycler1':
+    return 0x11
+  case 'recycler2':
+    return 0x12
+  case 'recycler3':
+    return 0x13
+  case 'recycler4':
+    return 0x14
+  case 'cassette':
+    return 0x15
+  default:
+    throw new Error('bad route')
+  }
+}
+
 function argsToByte(command, args, protocolVersion) {
   if (args !== undefined) {
     if (command === 'SET_DENOMINATION_ROUTE') {
       if (protocolVersion >= 6) {
-        return [args.route === 'payout' ? 0 : 1].concat([...int32LE(args.value)], [...Buffer.from(args.country_code, 'ascii')])
+        return [translateRoute(args.route)].concat([...int32LE(args.value)], [...Buffer.from(args.country_code, 'ascii')])
       }
-      return [args.route === 'payout' ? 0 : 1].concat([...(args.isHopper ? int16LE(args.value) : int32LE(args.value))])
+      return [translateRoute(args.route)].concat([...(args.isHopper ? int16LE(args.value) : int32LE(args.value))])
     } else if (command === 'SET_CHANNEL_INHIBITS') {
       return [
         ...int16LE(
