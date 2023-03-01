@@ -1,5 +1,5 @@
 const SspLib = require('./src/index')
-const channels = [{ value: 0, country_code: 'XXX' }]
+const channels = []
 
 const serialPortConfig = {
   baudRate: 9600, // default: 9600
@@ -16,73 +16,92 @@ const eSSP = new SspLib({
   fixedKey: '0123456701234567', // default: '0123456701234567'
 })
 
-eSSP.on('OPEN', () => {
+eSSP.on('OPEN', async () => {
   console.log('Port opened!')
 })
 
-eSSP.on('CLOSE', () => {
+eSSP.on('CLOSE', async () => {
   console.log('Port closed!')
 })
 
-eSSP.on('READ_NOTE', result => {
+eSSP.on('READ_NOTE', async result => {
   if (result.channel === 0) return
-  console.log('READ_NOTE', result, channels[result.channel])
+  const channel = channels[result.channel - 1]
+  console.log('READ_NOTE', channel)
 
-  if (channels[result.channel].value === 500) {
-    eSSP.command('REJECT_BANKNOTE')
-  }
+  // if (channel.value === 500) {
+  //   eSSP.command('REJECT_BANKNOTE')
+  // }
 })
 
-eSSP.on('NOTE_REJECTED', result => {
+eSSP.on('NOTE_REJECTED', async result => {
   console.log('NOTE_REJECTED', result)
-
-  eSSP.command('LAST_REJECT_CODE').then(result => {
-    console.log(result)
-  })
+  console.log(await eSSP.command('LAST_REJECT_CODE'))
 })
 
-eSSP
-  .open('/dev/ttyUSB0', serialPortConfig)
-  .then(() => eSSP.command('SYNC'))
-  .then(() => eSSP.command('HOST_PROTOCOL_VERSION', { version: 6 }))
-  .then(() => eSSP.initEncryption())
-  .then(() => eSSP.command('GET_SERIAL_NUMBER'))
-  .then(result => {
-    console.log('SERIAL NUMBER:', result.info.serial_number)
-    return
-  })
-  .then(() => eSSP.command('SETUP_REQUEST'))
-  .then(result => {
-    for (let i = 0; i < result.info.channel_value.length; i++) {
-      channels[i] = {
-        value: result.info.expanded_channel_value[i],
-        country_code: result.info.expanded_channel_country_code[i],
-      }
+eSSP.on('CREDIT_NOTE', async result => {
+  if (result.channel === 0) return
+  const channel = channels[result.channel - 1]
+
+  console.log('CREDIT_NOTE', channel)
+})
+
+;(async () => {
+  await eSSP.open('/dev/ttyUSB0', serialPortConfig)
+  await eSSP.command('SYNC')
+  await eSSP.command('HOST_PROTOCOL_VERSION', { version: 6 })
+  console.log('disabling payin')
+  await eSSP.disable()
+
+  console.log('encryption init')
+  await eSSP.initEncryption()
+  console.log('SERIAL NUMBER:', (await eSSP.command('GET_SERIAL_NUMBER'))?.info?.serial_number)
+
+  const setup_result = await eSSP.command('SETUP_REQUEST')
+  for (let i = 0; i < setup_result.info.channel_value.length; i++) {
+    channels[i] = {
+      value: setup_result.info.expanded_channel_value[i] * setup_result.info.real_value_multiplier,
+      country_code: setup_result.info.expanded_channel_country_code[i],
     }
-    return
-  })
-  .then(() => eSSP.command('SET_CHANNEL_INHIBITS', {
+  }
+
+  console.log('set channel inhibits')
+  await eSSP.command('SET_CHANNEL_INHIBITS', {
     channels: Array(channels.length).fill(1),
-  }))
-  .then(() => eSSP.enable())
-  .then(async () => {
-    console.log('resetting routes')
-    for (const i of [200, 5000, 10000]) {
-      await eSSP.command('SET_DENOMINATION_ROUTE', {route: 'cashbox', value: i, country_code: 'USD'})
-    }
-    for (const i of [100, 500, 1000, 2000]) {
-      await eSSP.command('SET_DENOMINATION_ROUTE', {route: 'payout', value: i, country_code: 'USD'})
-    }
-    console.log('getting routes')
-    for (const i of [100, 200, 500, 1000, 2000, 5000, 10000]) {
-      console.log(i, (await eSSP.command('GET_DENOMINATION_ROUTE', {value: i, country_code: 'USD'}))?.info)
-    }
-    console.log('enable payout')
-    await eSSP.command('ENABLE_PAYOUT_DEVICE', {REQUIRE_FULL_STARTUP: true, GIVE_VALUE_ON_STORED: true})
-    console.log('get levels')
-    console.log((await eSSP.command('GET_ALL_LEVELS'))?.info?.counter)
-    console.log('GO!!!')
   })
-  .catch(error => {
-    console.log(error)
-  })
+
+  console.log('resetting routes')
+  const payoutDenoms = [100, 500, 1000, 2000]
+  for (let i = 0; i < channels.length; i++) {
+    const channel = channels[i]
+    // TODO: country code check
+    if (!payoutDenoms.includes(channel.value)) {
+      await eSSP.command('SET_DENOMINATION_ROUTE', {route: 'cashbox', value: channel.value, country_code: channel.country_code})
+    }
+  }
+  for (let i = 0; i < channels.length; i++) {
+    const channel = channels[i]
+    // TODO: country code check
+    if (payoutDenoms.includes(channel.value)) {
+      await eSSP.command('SET_DENOMINATION_ROUTE', {route: 'payout', value: channel.value, country_code: channel.country_code})
+    }
+  }
+
+  console.log('checking routes')
+  for (const channel of channels) {
+    console.log(channel, (await eSSP.command('GET_DENOMINATION_ROUTE', {value: channel.value, country_code: channel.country_code}))?.info)
+  }
+
+  console.log('enable refill mode')
+  await eSSP.command('SET_REFILL_MODE', { mode: 'on' })
+
+  console.log('enable payin')
+  await eSSP.enable()
+
+  console.log('enable payout')
+  await eSSP.command('ENABLE_PAYOUT_DEVICE', {REQUIRE_FULL_STARTUP: false, GIVE_VALUE_ON_STORED: true})
+
+  console.log('get levels')
+  const levels = (await eSSP.command('GET_ALL_LEVELS'))?.info?.counter;
+  console.log(levels)
+})()
